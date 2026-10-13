@@ -245,4 +245,3 @@ curl -fsS -X POST http://localhost:4000/api/items -H 'Content-Type: application/
 
 The app successfully returned a ready status and inserted/retrieved the item record.
 
-> Note: this environment had port 8080 already occupied, so the frontend was verified on 8081 during local testing. The project documentation and default Compose setup remain aligned to the assessment standard of 8080 when no conflict exists.
