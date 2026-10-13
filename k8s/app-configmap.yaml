@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: dev
+data:
+  PORT: "4000"
+  DB_HOST: postgres-service
+  DB_PORT: "5432"
+  DB_NAME: appdb
+  DB_WRITE_URL: postgres://appuser:apppass@postgres-service:5432/appdb
+  DB_READ_URL: postgres://appuser:apppass@postgres-service:5432/appdb
+  REDIS_URL: redis://redis-service:6379
+  SEARCH_URL: http://search-service:9200
+  VITE_API_BASE_URL: /api
