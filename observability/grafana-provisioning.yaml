@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasources
+  namespace: dev
+data:
+  datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+      - name: Loki
+        uid: loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-provider
+  namespace: dev
+data:
+  provider.yaml: |
+    apiVersion: 1
+    providers:
+      - name: assessment
+        orgId: 1
+        folder: Platform
+        type: file
+        disableDeletion: true
+        editable: true
+        options:
+          path: /etc/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: dev
+data:
+  backend-overview.json: |
+    {
+      "annotations": {"list": []},
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "panels": [
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "cores"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+          "id": 1,
+          "title": "Backend CPU cores",
+          "type": "timeseries",
+          "targets": [{"expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"dev\",pod=~\"backend-.*\",container!=\"\"}[5m]))", "legendFormat": "{{pod}}", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+          "id": 2,
+          "title": "Backend resident memory",
+          "type": "timeseries",
+          "targets": [{"expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"dev\",pod=~\"backend-.*\",container!=\"\"})", "legendFormat": "{{pod}}", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+          "id": 3,
+          "title": "HTTP request rate",
+          "type": "timeseries",
+          "targets": [{"expr": "sum(rate(nginx_ingress_controller_requests{namespace=\"dev\",ingress=\"app-ingress\"}[5m]))", "legendFormat": "requests/s", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+          "id": 4,
+          "title": "HTTP 5xx error ratio",
+          "type": "timeseries",
+          "targets": [{"expr": "sum(rate(nginx_ingress_controller_requests{namespace=\"dev\",ingress=\"app-ingress\",status=~\"5..\"}[5m])) / clamp_min(sum(rate(nginx_ingress_controller_requests{namespace=\"dev\",ingress=\"app-ingress\"}[5m])), 0.001)", "legendFormat": "5xx ratio", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+          "id": 5,
+          "title": "Backend p95 latency",
+          "type": "timeseries",
+          "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(nginx_ingress_controller_request_duration_seconds_bucket{namespace=\"dev\",ingress=\"app-ingress\"}[5m])))", "legendFormat": "p95", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "prometheus", "uid": "prometheus"},
+          "fieldConfig": {"defaults": {"unit": "short", "min": 0}, "overrides": []},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+          "id": 6,
+          "title": "Scraped backend replicas",
+          "type": "timeseries",
+          "targets": [{"expr": "kube_deployment_status_replicas_available{namespace=\"dev\",deployment=\"backend\"}", "legendFormat": "available replicas", "refId": "A"}]
+        },
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+          "id": 7,
+          "title": "Backend logs",
+          "type": "logs",
+          "targets": [{"expr": "{job=\"fluent-bit\",namespace=\"dev\",app=\"backend\"} |= \"backend listening\"", "refId": "A"}]
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 39,
+      "tags": ["assessment", "backend"],
+      "time": {"from": "now-1h", "to": "now"},
+      "title": "Backend operations",
+      "uid": "backend-operations",
+      "version": 1
+    }

@@ -1,3 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: dev
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush 1
+        Log_Level info
+        Parsers_File parsers.conf
+        storage.path /var/fluent-bit/state
+
+    [INPUT]
+        Name tail
+        Path /var/log/containers/*_dev_*.log
+        Parser cri
+        Tag kube.var.log.containers.*
+        DB /var/fluent-bit/state/tail.db
+        Mem_Buf_Limit 10MB
+        Skip_Long_Lines On
+        Read_from_Head On
+        Inotify_Watcher false
+        Refresh_Interval 10
+
+    [FILTER]
+        Name kubernetes
+        Match kube.*
+        Kube_Tag_Prefix kube.var.log.containers.
+        Kube_Meta_Cache_TTL 60s
+        Labels On
+        Merge_Log On
+        Keep_Log Off
+
+    [OUTPUT]
+        Name loki
+        Match kube.*
+        Host loki
+        Port 3100
+        Labels job=fluent-bit, namespace=$kubernetes['namespace_name'], app=$kubernetes['labels']['app']
+        Line_Format json
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fluent-bit
+  namespace: dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fluent-bit-pod-metadata
+  namespace: dev
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fluent-bit-pod-metadata
+  namespace: dev
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fluent-bit-pod-metadata
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -12,23 +84,37 @@ spec:
       labels:
         app: fluent-bit
     spec:
+      serviceAccountName: fluent-bit
+      tolerations:
+        - operator: Exists
       containers:
         - name: fluent-bit
-          image: fluent/fluent-bit:2.2.3
-          env:
-            - name: LOKI_HOST
-              value: loki
+          image: fluent/fluent-bit:3.2.10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
           volumeMounts:
             - name: varlog
               mountPath: /var/log
-            - name: varlibdockercontainers
-              mountPath: /var/lib/docker/containers
               readOnly: true
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              readOnly: true
+            - name: fluent-bit-state
+              mountPath: /var/fluent-bit/state
       terminationGracePeriodSeconds: 30
       volumes:
         - name: varlog
           hostPath:
             path: /var/log
-        - name: varlibdockercontainers
-          hostPath:
-            path: /var/lib/docker/containers
+            type: Directory
+        - name: fluent-bit-config
+          configMap:
+            name: fluent-bit-config
+        - name: fluent-bit-state
+          emptyDir: {}

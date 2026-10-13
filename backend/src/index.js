@@ -1,8 +1,8 @@
-import express from "express";
 import cors from "cors";
-import { initSchema, read, write, pingWrite } from "./db.js";
-import redis from "./redisClient.js";
+import express from "express";
+import { initSchema, pingWrite, read, write } from "./db.js";
 import { enqueueItemCreated } from "./queue.js";
+import redis from "./redisClient.js";
 import { searchHealth } from "./search.js";
 
 const app = express();
@@ -50,7 +50,7 @@ app.get("/api/health/search", async (req, res) => {
 app.get("/api/items", async (req, res) => {
   try {
     const { rows } = await read(
-      "SELECT id, name, created_at FROM items ORDER BY id DESC LIMIT 50"
+      "SELECT id, name, created_at FROM items ORDER BY id DESC LIMIT 50",
     );
     res.json(rows);
   } catch (err) {
@@ -66,11 +66,11 @@ app.post("/api/items", async (req, res) => {
   try {
     const { rows } = await write(
       "INSERT INTO items (name) VALUES ($1) RETURNING id, name, created_at",
-      [name]
+      [name],
     );
     const item = rows[0];
     enqueueItemCreated(item).catch((err) =>
-      console.error("failed to enqueue item-created event:", err.message)
+      console.error("failed to enqueue item-created event:", err.message),
     );
     res.status(201).json(item);
   } catch (err) {

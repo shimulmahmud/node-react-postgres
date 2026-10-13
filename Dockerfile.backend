@@ -1,11 +1,17 @@
-FROM node:20-alpine
+FROM node:24-alpine AS dependencies
 
-WORKDIR /app
-COPY backend/package*.json ./backend/
 WORKDIR /app/backend
+COPY backend/package*.json ./
 RUN npm ci --omit=dev
 
-COPY backend/ .
+FROM node:24-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app/backend
+COPY --from=dependencies --chown=node:node /app/backend/node_modules ./node_modules
+COPY --chown=node:node backend/package.json ./package.json
+COPY --chown=node:node backend/src ./src
+
+USER node
 
 EXPOSE 4000
-CMD ["npm", "start"]
+CMD ["node", "src/index.js"]

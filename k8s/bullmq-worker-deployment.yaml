@@ -13,13 +13,30 @@ spec:
       labels:
         app: bullmq-worker
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: bullmq-worker
           image: ghcr.io/shimulmahmud/node-react-postgres-platform-backend:dev
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           envFrom:
             - configMapRef:
                 name: app-config
             - secretRef:
                 name: app-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
           command: ["npm", "run", "worker"]
