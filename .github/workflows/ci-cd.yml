@@ -108,18 +108,17 @@ jobs:
   deploy:
     if: github.event_name == 'push'
     needs: build-and-push
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment: ${{ needs.build-and-push.outputs.namespace }}
     steps:
       - uses: actions/checkout@v4
 
-      # KUBECONFIG_B64 is a base64-encoded kubeconfig stored as an encrypted
-      # GitHub Actions secret, scoped to a service account with access to
-      # only this cluster/namespace set - never printed or written to logs.
-      - name: Configure kubeconfig
+      # This runner must be installed on the machine/network that can reach
+      # the local kind cluster; GitHub-hosted runners cannot reach localhost.
+      - name: Verify Kubernetes access
         run: |
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
+          kubectl config current-context
+          kubectl cluster-info
 
       - name: Deploy manifests to ${{ needs.build-and-push.outputs.namespace }}
         env:
@@ -145,13 +144,8 @@ jobs:
 
   rollback:
     if: github.event_name == 'workflow_dispatch' && inputs.rollback_namespace != ''
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
-      - name: Configure kubeconfig
-        run: |
-          mkdir -p "$HOME/.kube"
-          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$HOME/.kube/config"
-
       # Fast path: undo the last rollout. The slower/more precise path is
       # re-running this workflow with a previous commit checked out, which
       # rebuilds and redeploys that exact previous image tag.

@@ -2,12 +2,18 @@
 
 This repo implements the production-style platform described in the assessment PDF using a local Docker Compose setup, Kubernetes manifests, an API gateway pattern, CI/CD automation, platform services, and observability scaffolding.
 
+## Prerequisites
+
+- Docker Engine with the Compose plugin
+- For Kubernetes: `kubectl`, kind, and an ingress-nginx controller
+- For autoscaling: Metrics Server installed in the cluster
+- For automated Kubernetes deploys: a GitHub Actions self-hosted runner on the machine that can access the local kind cluster
+
 ## 1. Local containerized setup
 
 ### Start the stack
 
 ```bash
-cd /home/sharetrip/Downloads/node-react-postgres-platform
 docker compose up --build
 ```
 
@@ -37,12 +43,19 @@ The local stack includes:
 
 ## 2. Kubernetes deployment (dev namespace)
 
-Use a local cluster such as kind or minikube and load the images locally or push to a registry the cluster can resolve.
+Create a local kind cluster and build/load the GHCR-tagged development images before applying the manifests:
 
 ```bash
+kind create cluster --name kind
+docker build -f Dockerfile.backend -t ghcr.io/shimulmahmud/node-react-postgres-platform-backend:dev .
+docker build -f Dockerfile.frontend -t ghcr.io/shimulmahmud/node-react-postgres-platform-frontend:dev .
+kind load docker-image ghcr.io/shimulmahmud/node-react-postgres-platform-backend:dev --name kind
+kind load docker-image ghcr.io/shimulmahmud/node-react-postgres-platform-frontend:dev --name kind
 kubectl apply -f k8s/namespace-dev.yaml
 kubectl apply -n dev -f k8s/
 ```
+
+Install ingress-nginx for kind before applying `k8s/ingress-dev.yaml`. If using private GHCR packages instead of locally loaded images, configure an image pull secret in the `dev` namespace and reference it from the pod specs.
 
 ### Included Kubernetes resources
 
@@ -140,8 +153,8 @@ Branch-to-namespace mapping:
 
 ### Secrets and rollback
 
-- The workflow publishes images to GHCR using the automatically provided `GITHUB_TOKEN`; grant the workflow `packages: write` permission.
-- Cluster access uses a base64-encoded kubeconfig secret such as `KUBECONFIG_B64`.
+- The workflow publishes images to GHCR using the automatically provided `GITHUB_TOKEN`; grant the workflow `packages: write` permission and ensure the GHCR packages are public or pullable by the cluster.
+- Build and test jobs use GitHub-hosted runners. Deploy and rollback jobs use a self-hosted GitHub Actions runner on the machine that owns, or can network-reach, the Kubernetes cluster. For this local kind assessment, the runner reads the cluster credentials from its local `~/.kube/config`; protect that host and grant the runner only the Kubernetes permissions it needs. A GitHub-hosted runner cannot reach a kubeconfig endpoint such as `localhost` on the developer's machine.
 - Rollback strategy: `kubectl rollout undo deployment/<name> -n <namespace>` or redeploy a previous tagged image.
 
 ---
@@ -182,7 +195,7 @@ The app intentionally routes writes through `writePool` and reads via `readPool`
 
 ## 6. Observability, scaling, and rate limiting
 
-The observability folder includes example manifests for:
+The observability folder currently contains example manifests for:
 
 - Prometheus
 - Grafana
@@ -199,11 +212,24 @@ The observability folder includes example manifests for:
 
 ### Scaling
 
-The backend HPA scales from 2 to 6 replicas based on CPU and memory utilization.
+The backend HPA is configured for 2 to 6 replicas based on CPU and memory utilization. Metrics Server must be installed, and resource requests must be set on the backend containers, for the HPA to calculate utilization. The current backend Deployment does not yet define those requests, so autoscaling is configured but not operationally verified.
 
 ### Rate limiting
 
-Rate limiting is best applied at the ingress or gateway layer so the platform can reject excess traffic before it reaches the backend. This protects upstream services and keeps the worker and database from being overwhelmed under burst traffic.
+Rate limiting is best applied at the ingress or gateway layer so the platform can reject excess traffic before it reaches the backend. This repository documents that design choice, but does not yet configure or validate an ingress rate limit.
+
+The Prometheus, Grafana, Fluent Bit, and Loki manifests are assessment scaffolding; dashboards, alert rules, and an end-to-end searchable-log verification still need to be added before claiming Task 6 is fully complete.
+
+## Design decisions and remaining work
+
+- Compose provides a one-command local stack; Kubernetes keeps the database, Redis, and search services internal and exposes the frontend through NodePort/Ingress.
+- Read/write routing is in the backend using separate PostgreSQL pools. Reads may lag behind writes when a real replica is introduced, so read-after-write and consistency-sensitive checks must use the writer.
+- The local kind cluster cannot be reached directly from a GitHub-hosted runner. CI builds and publishes images on GitHub-hosted runners; deployment runs on the self-hosted runner connected to the cluster.
+- With more time: provision isolated preprod/release clusters, add verified dashboards/alerts and searchable logs, enforce ingress rate limits, and capture the required screenshots and passing workflow run under `docs/`.
+
+## Assessment evidence
+
+The assessment requests evidence under `docs/`: `kubectl get all -n dev`, the app at `node-react.local`, Grafana dashboards, Loki log queries, and a passing GitHub Actions run. Add those screenshots/links after capturing them; they are not represented here as completed evidence.
 
 ---
 
